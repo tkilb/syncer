@@ -49,7 +49,7 @@ parse_yaml() {
     local prefix="$2"
 
     # Extract default-cron
-    DEFAULT_CRON=$(grep "^default-cron:" "$yaml_file" | sed "s/default-cron:[[:space:]]*'\(.*\)'/\1/" | tr -d "'\"")
+    DEFAULT_CRON=$(grep "^default-cron:" "$yaml_file" | sed -E "s/^default-cron:[[:space:]]*//; s/^['\"]//; s/['\"][[:space:]]*#.*//; s/['\"][[:space:]]*$//; s/#.*//")
 
     # Extract repositories
     local in_repos=false
@@ -67,18 +67,68 @@ parse_yaml() {
             if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*path:[[:space:]]*(.*) ]]; then
                 local path="${BASH_REMATCH[1]}"
                 path=$(echo "$path" | tr -d "'\"")
+                # Expand tilde to home directory
+                path="${path/#\~/$HOME}"
                 REPO_PATHS[$repo_index]="$path"
                 # Set default cron for this repo
                 REPO_CRONS[$repo_index]="$DEFAULT_CRON"
             # Parse cron (optional override)
             elif [[ "$line" =~ ^[[:space:]]+cron:[[:space:]]*(.*) ]]; then
                 local cron="${BASH_REMATCH[1]}"
-                cron=$(echo "$cron" | tr -d "'\"")
+                # Remove quotes and comments
+                cron=$(echo "$cron" | sed -E "s/^['\"]//; s/['\"][[:space:]]*#.*//; s/['\"][[:space:]]*$//; s/#.*//")
                 REPO_CRONS[$repo_index]="$cron"
                 ((repo_index++))
             fi
         fi
     done <"$yaml_file"
+}
+
+# Function to validate cron format
+validate_cron() {
+    local cron_schedule="$1"
+    
+    # Cron format: minute hour day month weekday
+    # Each field can be: *, number, */number, or number/number
+    local field_count=$(echo "$cron_schedule" | awk '{print NF}')
+    
+    if [ "$field_count" -ne 5 ]; then
+        return 1
+    fi
+    
+    IFS=' ' read -r minute hour day month weekday <<<"$cron_schedule"
+    
+    # Validate each field
+    local valid_pattern='^(\*|([0-9]+)(/[0-9]+)?|\*/[0-9]+)$'
+    
+    if ! [[ "$minute" =~ $valid_pattern ]] || ! [[ "$hour" =~ $valid_pattern ]] || \
+       ! [[ "$day" =~ $valid_pattern ]] || ! [[ "$month" =~ $valid_pattern ]] || \
+       ! [[ "$weekday" =~ $valid_pattern ]]; then
+        return 1
+    fi
+    
+    # Validate ranges
+    if [[ "$minute" =~ ^[0-9]+$ ]] && ([ "$minute" -lt 0 ] || [ "$minute" -gt 59 ]); then
+        return 1
+    fi
+    
+    if [[ "$hour" =~ ^[0-9]+$ ]] && ([ "$hour" -lt 0 ] || [ "$hour" -gt 23 ]); then
+        return 1
+    fi
+    
+    if [[ "$day" =~ ^[0-9]+$ ]] && ([ "$day" -lt 1 ] || [ "$day" -gt 31 ]); then
+        return 1
+    fi
+    
+    if [[ "$month" =~ ^[0-9]+$ ]] && ([ "$month" -lt 1 ] || [ "$month" -gt 12 ]); then
+        return 1
+    fi
+    
+    if [[ "$weekday" =~ ^[0-9]+$ ]] && ([ "$weekday" -lt 0 ] || [ "$weekday" -gt 7 ]); then
+        return 1
+    fi
+    
+    return 0
 }
 
 # Function to check if it's time to sync based on cron schedule
@@ -161,7 +211,7 @@ sync_repository() {
 
     # Check if directory exists
     if [ ! -d "$repo_path" ]; then
-        log_message "ERROR: Repository path does not exist: $repo_path"
+        log_message "WARN: Repository path does not exist: $repo_path"
         return 1
     fi
 
@@ -247,14 +297,34 @@ main() {
     DEFAULT_CRON=""
 
     parse_yaml "$CONFIG_FILE"
+    log_message "${#REPO_PATHS[@]} repositories found in configuration."
+
+    # Validate default cron if it exists
+    if [ -n "$DEFAULT_CRON" ]; then
+        if ! validate_cron "$DEFAULT_CRON"; then
+            log_message "ERROR: Invalid default cron format: '$DEFAULT_CRON'. Expected format: 'minute hour day month weekday' (e.g., '*/5 * * * *')"
+        fi
+    fi
 
     # Sync each repository if it's time
     for i in "${!REPO_PATHS[@]}"; do
+        log_message "Processing repository: ${REPO_PATHS[$i]}"
         local repo_path="${REPO_PATHS[$i]}"
         local cron_schedule="${REPO_CRONS[$i]}"
 
+        log_message "Using cron schedule: $cron_schedule"
+        
+        # Validate cron format
+        if ! validate_cron "$cron_schedule"; then
+            log_message "ERROR: Invalid cron format for repository '$repo_path': '$cron_schedule'. Expected format: 'minute hour day month weekday' (e.g., '*/5 * * * *'). Skipping this repository."
+            continue
+        fi
+        
         if should_sync "$repo_path" "$cron_schedule"; then
+            log_message "It's time to sync repository: $repo_path"
             sync_repository "$repo_path"
+        else
+            log_message "Skipping repository (not scheduled to sync now): $repo_path"
         fi
     done
 

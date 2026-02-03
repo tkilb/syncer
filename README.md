@@ -1,6 +1,7 @@
 # Syncer - Git Repository Synchronization Tool
 
 ## Overview
+
 Syncer is a shell script that automatically synchronizes multiple git repositories with their remote counterparts based on customizable cron schedules.
 
 ## Installation
@@ -23,9 +24,11 @@ repositories:
 ```
 
 ### Cron Schedule Format
+
 The cron schedule follows the standard format: `minute hour day month weekday`
 
 Examples:
+
 - `0 2 * * *` - Run at 2:00 AM every day
 - `*/5 * * * *` - Run every 5 minutes
 - `0/2 * * * *` - Run every 2 minutes starting from minute 0
@@ -36,11 +39,13 @@ Examples:
 To run syncer every minute via cron:
 
 1. Open crontab editor:
+
    ```bash
    crontab -e
    ```
 
 2. Add this line:
+
    ```
    * * * * * ~/Programs/syncer/syncer.sh
    ```
