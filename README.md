@@ -15,13 +15,17 @@ Configuration and logs are stored in: `~/.config/syncer/`
 Edit the configuration file at `~/.config/syncer/config.yaml`:
 
 ```yaml
-default-cron: '0 2 * * *'
-repositories:
-  - path: /path/to/repo1
-    cron: '0/2 * * * *'
-  - path: /path/to/repo2
-    cron: '0 2 * * *'
+- path: /path/to/repo1
+  cron: '0/2 * * * *'
+- path: /path/to/repo2
+  cron: '0 2 * * *'
+- path: ~/Documents/my-project
+  cron: '*/5 * * * *'
 ```
+
+Each repository entry requires:
+- `path`: The filesystem path to the git repository (can use ~ for home directory)
+- `cron`: The cron schedule for syncing this repository
 
 ### Cron Schedule Format
 

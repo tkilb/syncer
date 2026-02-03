@@ -46,40 +46,26 @@ rotate_logs() {
 # Function to parse YAML (simple implementation for our specific format)
 parse_yaml() {
     local yaml_file="$1"
-    local prefix="$2"
-
-    # Extract default-cron
-    DEFAULT_CRON=$(grep "^default-cron:" "$yaml_file" | sed -E "s/^default-cron:[[:space:]]*//; s/^['\"]//; s/['\"][[:space:]]*#.*//; s/['\"][[:space:]]*$//; s/#.*//")
-
-    # Extract repositories
-    local in_repos=false
     local repo_index=0
 
     while IFS= read -r line; do
-        # Check if we're in the repositories section
-        if [[ "$line" =~ ^repositories: ]]; then
-            in_repos=true
-            continue
-        fi
+        # Skip empty lines and comments
+        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
 
-        if $in_repos; then
-            # Parse path
-            if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*path:[[:space:]]*(.*) ]]; then
-                local path="${BASH_REMATCH[1]}"
-                path=$(echo "$path" | tr -d "'\"")
-                # Expand tilde to home directory
-                path="${path/#\~/$HOME}"
-                REPO_PATHS[$repo_index]="$path"
-                # Set default cron for this repo
-                REPO_CRONS[$repo_index]="$DEFAULT_CRON"
-            # Parse cron (optional override)
-            elif [[ "$line" =~ ^[[:space:]]+cron:[[:space:]]*(.*) ]]; then
-                local cron="${BASH_REMATCH[1]}"
-                # Remove quotes and comments
-                cron=$(echo "$cron" | sed -E "s/^['\"]//; s/['\"][[:space:]]*#.*//; s/['\"][[:space:]]*$//; s/#.*//")
-                REPO_CRONS[$repo_index]="$cron"
-                ((repo_index++))
-            fi
+        # Parse path (starts with - path:)
+        if [[ "$line" =~ ^-[[:space:]]*path:[[:space:]]*(.*) ]]; then
+            local path="${BASH_REMATCH[1]}"
+            path=$(echo "$path" | tr -d "'\"")
+            # Expand tilde to home directory
+            path="${path/#\~/$HOME}"
+            REPO_PATHS[$repo_index]="$path"
+        # Parse cron (indented cron:)
+        elif [[ "$line" =~ ^[[:space:]]+cron:[[:space:]]*(.*) ]]; then
+            local cron="${BASH_REMATCH[1]}"
+            # Remove quotes and comments
+            cron=$(echo "$cron" | sed -E "s/^['\"]//; s/['\"][[:space:]]*#.*//; s/['\"][[:space:]]*$//; s/#.*//")
+            REPO_CRONS[$repo_index]="$cron"
+            ((repo_index++))
         fi
     done <"$yaml_file"
 }
@@ -294,17 +280,9 @@ main() {
     # Parse configuration
     declare -a REPO_PATHS
     declare -a REPO_CRONS
-    DEFAULT_CRON=""
 
     parse_yaml "$CONFIG_FILE"
     log_message "${#REPO_PATHS[@]} repositories found in configuration."
-
-    # Validate default cron if it exists
-    if [ -n "$DEFAULT_CRON" ]; then
-        if ! validate_cron "$DEFAULT_CRON"; then
-            log_message "ERROR: Invalid default cron format: '$DEFAULT_CRON'. Expected format: 'minute hour day month weekday' (e.g., '*/5 * * * *')"
-        fi
-    fi
 
     # Sync each repository if it's time
     for i in "${!REPO_PATHS[@]}"; do
