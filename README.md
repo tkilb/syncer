@@ -38,9 +38,44 @@ Examples:
 - `0/2 * * * *` - Run every 2 minutes starting from minute 0
 - `30 14 * * *` - Run at 2:30 PM every day
 
+## Usage
+
+Syncer can be run in two modes:
+
+### Manual Mode (Default)
+
+Run without arguments to sync **all repositories immediately**, ignoring cron schedules:
+
+```bash
+~/Programs/syncer/syncer.sh
+```
+
+This is useful for:
+- Testing your configuration
+- Forcing an immediate sync of all repositories
+- One-time manual synchronization
+
+### Cron Mode
+
+Run with `-c` or `--cron` flag to **respect cron schedules**:
+
+```bash
+~/Programs/syncer/syncer.sh --cron
+```
+
+This will only sync repositories that are scheduled to run at the current time.
+
+### Help
+
+Display usage information:
+
+```bash
+~/Programs/syncer/syncer.sh --help
+```
+
 ## Setup Cron Job
 
-To run syncer every minute via cron:
+To run syncer every minute via cron (with schedule enforcement):
 
 1. Open crontab editor:
 
@@ -48,10 +83,10 @@ To run syncer every minute via cron:
    crontab -e
    ```
 
-2. Add this line:
+2. Add this line (note the `--cron` flag):
 
    ```
-   * * * * * ~/Programs/syncer/syncer.sh
+   * * * * * ~/Programs/syncer/syncer.sh --cron
    ```
 
 3. Save and exit.
@@ -74,6 +109,8 @@ Old logs are rotated to: `syncer.log.1`, `syncer.log.2`, etc.
 
 ## How It Works
 
+### In Cron Mode (`--cron`)
+
 1. Syncer runs every minute via cron
 2. It checks each repository's cron schedule to determine if it should sync
 3. For repositories that are due for sync:
@@ -81,6 +118,13 @@ Old logs are rotated to: `syncer.log.1`, `syncer.log.2`, etc.
    - Pulls latest changes from remote
    - Pushes local commits to remote
    - Resolves conflicts favoring remote changes
+4. All actions are logged with timestamps
+
+### In Manual Mode (default)
+
+1. Syncer processes all configured repositories immediately
+2. Each repository is synced regardless of its cron schedule
+3. Same sync operations as cron mode (commit, pull, push)
 4. All actions are logged with timestamps
 
 ## Notes

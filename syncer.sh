@@ -265,10 +265,18 @@ sync_repository() {
 
 # Main execution
 main() {
+    local cron_mode="$1"
+    
     # Rotate logs if needed
     rotate_logs
 
     log_message "=== Syncer started ==="
+    
+    if [ "$cron_mode" = "true" ]; then
+        log_message "Running in cron mode (respecting schedules)"
+    else
+        log_message "Running in manual mode (syncing all repositories)"
+    fi
 
     # Check if config file exists
     if [ ! -f "$CONFIG_FILE" ]; then
@@ -298,16 +306,48 @@ main() {
             continue
         fi
         
-        if should_sync "$repo_path" "$cron_schedule"; then
-            log_message "It's time to sync repository: $repo_path"
-            sync_repository "$repo_path"
+        # In cron mode, check schedule; in manual mode, always sync
+        if [ "$cron_mode" = "true" ]; then
+            if should_sync "$repo_path" "$cron_schedule"; then
+                log_message "It's time to sync repository: $repo_path"
+                sync_repository "$repo_path"
+            else
+                log_message "Skipping repository (not scheduled to sync now): $repo_path"
+            fi
         else
-            log_message "Skipping repository (not scheduled to sync now): $repo_path"
+            log_message "Syncing repository (manual mode): $repo_path"
+            sync_repository "$repo_path"
         fi
     done
 
     log_message "=== Syncer completed ==="
 }
 
+# Parse command line arguments
+CRON_MODE=false
+
+for arg in "$@"; do
+    case $arg in
+        -c|--cron)
+            CRON_MODE=true
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: syncer.sh [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  (no args)       Sync all repositories immediately, ignoring cron schedules"
+            echo "  -c, --cron      Respect cron schedules (only sync repositories that are due)"
+            echo "  -h, --help      Display this help message"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $arg"
+            echo "Use -h or --help for usage information"
+            exit 1
+            ;;
+    esac
+done
+
 # Run main function
-main
+main "$CRON_MODE"
